@@ -1,0 +1,71 @@
+---
+- name: Get secret for htpasswd auth
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    name: htpasswd
+    namespace: openshift-config
+  register: r_get_htpasswd_secret
+
+- name: Create htpasswd tempfile
+  tempfile:
+    state: file
+  register: r_htpasswd_tmp
+  changed_when: false
+  check_mode: false
+
+- name: Copy contents of htpasswd auth secret to tempfile
+  copy:
+    content: "{{ r_get_htpasswd_secret.resources[0].data.htpasswd | b64decode }}"
+    dest: "{{ r_htpasswd_tmp.path }}"
+  when: r_get_htpasswd_secret.resources
+  changed_when: false
+  check_mode: false
+
+- name: Users for htpasswd
+  include_tasks: htpasswd-user.yaml
+  loop: "{{ openshift_htpasswd_users }}"
+  loop_control:
+    label: "{{ openshift_htpasswd_user.name }}"
+    loop_var: openshift_htpasswd_user
+  vars:
+    htpasswd_file: "{{ r_htpasswd_tmp.path }}"
+
+- name: Read contents of htpasswd
+  slurp:
+    src: "{{ r_htpasswd_tmp.path }}"
+  register: r_slurp_htpasswd
+
+- name: Update htpasswd secret
+  k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: htpasswd
+        namespace: openshift-config
+      data:
+        htpasswd: "{{ r_slurp_htpasswd['content'] }}"
+
+- name: Remove htpasswd tempfile
+  file:
+    state: absent
+    path: "{{ r_htpasswd_tmp.path }}"
+  changed_when: false
+  check_mode: false
+
+- name: Configure OAuth
+  k8s:
+    definition:
+      apiVersion: config.openshift.io/v1
+      kind: OAuth
+      metadata:
+        name: cluster
+      spec:
+        identityProviders:
+        - name: Local Password
+          mappingMethod: claim
+          type: HTPasswd
+          htpasswd:
+            fileData:
+              name: htpasswd
