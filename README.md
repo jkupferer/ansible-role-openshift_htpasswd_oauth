@@ -21,4 +21,5 @@ Example Playbook:
       password: p4ssw0rd
     - name: bob
       password: p4ssw0rd
+    openshift_htpasswd_remove_users: true
 ```

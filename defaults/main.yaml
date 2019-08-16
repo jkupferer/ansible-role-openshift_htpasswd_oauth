@@ -1,2 +1,3 @@
 ---
 openshift_htpasswd_users: []
+openshift_htpasswd_remove_users: false
